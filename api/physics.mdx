@@ -173,9 +173,9 @@ The following sets up three equal-mass bodies at the vertices of an equilateral 
 const float a = 10.0f;              // side length
 float R = a / sqrt(3.0f);           // circumradius
 
-int o1 = addObject(0, glm::vec3{ R,        0,      0 }, glm::vec3{1.0f}, 0);
-int o2 = addObject(0, glm::vec3{-R/2.0f,  a/2.0f, 0 }, glm::vec3{1.0f}, 0);
-int o3 = addObject(0, glm::vec3{-R/2.0f, -a/2.0f, 0 }, glm::vec3{1.0f}, 0);
+int o1 = addObject(0, glm::vec3{ R,        0,      0 }, glm::vec3{1.01f, 1.0f, 1.0f}, 0);
+int o2 = addObject(0, glm::vec3{-R/2.0f,  a/2.0f, 0 }, glm::vec3{1.01f, 1.0f, 1.0f}, 0);
+int o3 = addObject(0, glm::vec3{-R/2.0f, -a/2.0f, 0 }, glm::vec3{1.01f, 1.0f, 1.0f}, 0);
 
 float v = sqrt(1.0f / a);           // orbital speed (G=1, equal masses)
 
