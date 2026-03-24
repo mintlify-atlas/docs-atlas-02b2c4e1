@@ -1,0 +1,156 @@
+---
+title: Rendering shapes
+description: Render cubes, spheres, icospheres, and a reference grid using fast_opengl's shape systems
+---
+
+fast_opengl provides two categories of shape rendering:
+
+- **Simple shapes** — single-draw non-instanced shapes (`createcube`, `createsphere`, `createicosphere`, `creategrid`)
+- **Instanced shape systems** — GPU-instanced rendering for placing many cubes or spheres efficiently
+
+<Note>
+The instanced systems (`initcubesystem`, `initspheresystem`) are the recommended approach when you need more than one shape. The simple shapes are useful for quick prototyping.
+</Note>
+
+## Reference grid
+
+The grid is the simplest shape — useful for spatial orientation during development.
+
+```cpp
+creategrid();
+
+// In the render loop:
+griddraw(view, projection);
+```
+
+## Simple cube
+
+The non-instanced cube renders a single textured cube with optional rotation.
+
+```cpp
+createcube(); // loads shaders/vet.glsl + shaders/frag.glsl, uploads geometry
+
+// In the render loop:
+cubedraw(view, projection, deltatime);
+```
+
+The `time` parameter drives a rotation animation — pass `0.0f` to disable it.
+
+## Instanced cube system
+
+The instanced cube system lets you place thousands of cubes in a single draw call.
+
+<Steps>
+  <Step title="Initialize the system">
+    Call `initcubesystem` with a list of texture file paths before the render loop.
+
+    ```cpp
+    std::vector<std::string> textures = {
+        "assets/map/texture_check.png",  // Index 0
+    };
+    initcubesystem(textures);
+    ```
+  </Step>
+  <Step title="Add cube instances">
+    Add cubes by position, side length, and either a texture index or a solid color.
+
+    ```cpp
+    // Textured cube (texture index 0)
+    int c1 = addCube(1.0f, glm::vec3(0.0f, 0.0f, 0.0f), 0.0f);
+
+    // Textured cube at another position
+    addCube(1.0f, glm::vec3(1.0f, 1.0f, 1.0f), 0.0f);
+
+    // Solid color cube (red)
+    addCube(1.0f, glm::vec3(2, 0, 0), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+    ```
+  </Step>
+  <Step title="Upload to GPU">
+    After adding all cubes, upload instance data to the GPU.
+
+    ```cpp
+    bufferInstanceData();
+    ```
+  </Step>
+  <Step title="Draw each frame">
+    In the render loop, draw all instanced cubes.
+
+    ```cpp
+    drawInstancedCubes(view, projection);
+    ```
+  </Step>
+</Steps>
+
+### Updating cube transforms
+
+After adding cubes you can reposition or rescale them:
+
+```cpp
+// Set position and scale
+CubeTransform(c1, glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.5f, 0.0f, 0.0f));
+
+// Scale only
+CubeTransform(c1, glm::vec3(2.0f, 2.0f, 2.0f));
+
+// Change color
+setCubeColor(c1, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
+
+// Update all cubes after modifying
+updatecubeall();
+// Or just one:
+updatecubebyid(c1);
+```
+
+## Instanced sphere system
+
+Icospheres support configurable subdivision levels — more divisions give smoother spheres.
+
+<Steps>
+  <Step title="Initialize the system">
+    Pass texture paths and a subdivision level (3 is a good balance of quality vs. vertex count).
+
+    ```cpp
+    std::vector<std::string> textures = {}; // empty = color-only
+    initspheresystem(textures, 3);
+    ```
+  </Step>
+  <Step title="Add sphere instances">
+    ```cpp
+    // Solid color sphere
+    int s1 = addSphere(2.0, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+
+    // Another sphere
+    addSphere(3.0, glm::vec3(2.0f, 2.0f, 2.0f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
+    ```
+  </Step>
+  <Step title="Upload to GPU">
+    ```cpp
+    bufferInstanceDataSphere();
+    ```
+  </Step>
+  <Step title="Draw each frame">
+    ```cpp
+    drawInstancedSpheres(view, projection);
+    ```
+  </Step>
+</Steps>
+
+### Updating sphere transforms
+
+```cpp
+// Set position and scale
+SphereTransform(s1, glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+// Scale only
+SphereTransform(s1, glm::vec3(1.5f, 1.5f, 1.5f));
+
+// Change color
+setSphereColor(s1, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
+
+// Update
+updatesphereall();
+```
+
+<Tip>
+For the OBJ system (`initSystem` / `addObject`), see the [OBJ models guide](/guides/obj-models). It supports arbitrary `.obj` meshes with the same instancing approach.
+</Tip>

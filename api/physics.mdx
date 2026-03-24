@@ -1,0 +1,192 @@
+---
+title: Physics
+description: N-body gravitational simulation API
+---
+
+The physics module provides an N-body gravitational simulation system. Bodies are registered with `addDynamicBody`, given initial conditions via `getphydata`, and stepped forward each frame using a fixed-timestep leapfrog integrator.
+
+## `body` struct
+
+Represents a single physics body linked to a rendered object instance.
+
+```cpp
+#include <phy.h>
+
+struct body {
+    float mass;
+    glm::vec3 pos;
+    glm::vec3 velocity;
+    glm::vec3 acceleration;
+    int modelID;
+    int objectID;
+};
+```
+
+| Field          | Type        | Description                                              |
+| -------------- | ----------- | -------------------------------------------------------- |
+| `mass`         | `float`     | Mass of the body (dimensionless units where G = 1).      |
+| `pos`          | `glm::vec3` | Current world-space position.                            |
+| `velocity`     | `glm::vec3` | Current velocity vector.                                 |
+| `acceleration` | `glm::vec3` | Acceleration computed by `updateGravity`. Do not set manually. |
+| `modelID`      | `int`       | Index of the model in the render system.                 |
+| `objectID`     | `int`       | Instance index within the model.                         |
+
+---
+
+## `addDynamicBody`
+
+```cpp
+size_t addDynamicBody(int modelID, int objectID, float mass, glm::vec3 pos);
+```
+
+Registers a new physics body linked to a rendered object instance. Initial velocity and acceleration are set to zero.
+
+Returns a `size_t` handle used to retrieve body data with `getphydata`.
+
+<ParamField path="modelID" type="int" required>
+  Index of the model in the render system (as returned by `initSystem`).
+</ParamField>
+
+<ParamField path="objectID" type="int" required>
+  Instance index within the model (as returned by `addObject`).
+</ParamField>
+
+<ParamField path="mass" type="float" required>
+  Mass of the body in dimensionless units (G = 1).
+</ParamField>
+
+<ParamField path="pos" type="glm::vec3" required>
+  Initial world-space position. Pass `getData(modelID, objectID).position` to match the rendered object's starting position.
+</ParamField>
+
+---
+
+## `getphydata`
+
+```cpp
+body& getphydata(size_t id);
+```
+
+Returns a mutable reference to the `body` struct for the given handle. Use this immediately after `addDynamicBody` to set initial velocity before the simulation starts.
+
+<ParamField path="id" type="size_t" required>
+  Handle returned by `addDynamicBody`.
+</ParamField>
+
+```cpp
+// Set initial velocity after registering the body
+size_t phy1 = addDynamicBody(0, o1, 1.0f, getData(0, o1).position);
+getphydata(phy1).velocity = glm::vec3({0, v, 0});
+```
+
+---
+
+## `updateGravity`
+
+```cpp
+void updateGravity();
+```
+
+Computes pairwise gravitational accelerations for all registered bodies using an O(n²) all-pairs algorithm.
+
+- **G = 1.0** (dimensionless)
+- **Softening = 0.01** prevents division by zero at very close range: distance² is replaced with distance² + ε before computing the force
+- Resets all body accelerations to zero before accumulating forces
+
+Call this between `updateVelocityfirst` and `updateVelocitysecond` in the fixed-timestep loop.
+
+---
+
+## `updateVelocityfirst`
+
+```cpp
+void updateVelocityfirst(double dt);
+```
+
+First half of the leapfrog integration step:
+
+1. Applies a half-step velocity kick: `velocity += acceleration * 0.5 * dt`
+2. Advances position by a full step: `pos += velocity * dt`
+3. Calls `objectTransform` to synchronize the rendered object's position to the new physics position
+
+<ParamField path="dt" type="double" required>
+  Fixed physics timestep in seconds.
+</ParamField>
+
+<Note>
+  Physics positions are automatically synced to rendered objects inside `updateVelocityfirst` via `objectTransform`. You do not need to call any position update manually after stepping the simulation.
+</Note>
+
+---
+
+## `updateVelocitysecond`
+
+```cpp
+void updateVelocitysecond(double dt);
+```
+
+Second half of the leapfrog integration step. Applies the second half-step velocity kick using the updated acceleration from `updateGravity`:
+
+`velocity += acceleration * 0.5 * dt`
+
+<ParamField path="dt" type="double" required>
+  Fixed physics timestep in seconds. Must match the value passed to `updateVelocityfirst`.
+</ParamField>
+
+---
+
+## Fixed-timestep update loop
+
+The simulation must be stepped with a fixed `dt` using an accumulator to decouple physics from frame rate. The required call order per tick is:
+
+```cpp
+const double dt = 0.01;
+double accumulator = 0.0;
+
+// Inside the game loop, after computing deltatime:
+accumulator += deltatime;
+
+while (accumulator >= dt) {
+    updateVelocityfirst(dt);
+    updateGravity();
+    updateVelocitysecond(dt);
+    accumulator -= dt;
+}
+```
+
+---
+
+## Integration scheme
+
+The integrator is the **leapfrog (Störmer-Verlet)** method. Unlike Euler integration, leapfrog is **symplectic**: it exactly conserves a quantity close to the true energy of the system over long time periods, preventing the artificial energy drift that causes orbits to spiral inward or outward under Euler integration.
+
+The half-step velocity structure — kick, drift, force, kick — is what gives leapfrog its symplectic property, making it the standard choice for gravitational N-body and orbital simulations.
+
+---
+
+## Example: stable three-body orbit
+
+The following sets up three equal-mass bodies at the vertices of an equilateral triangle with tangential velocities chosen to produce a stable circular orbit (the Lagrange equilateral solution).
+
+```cpp
+// Place three bodies at equilateral triangle vertices
+const float a = 10.0f;              // side length
+float R = a / sqrt(3.0f);           // circumradius
+
+int o1 = addObject(0, glm::vec3{ R,        0,      0 }, glm::vec3{1.0f}, 0);
+int o2 = addObject(0, glm::vec3{-R/2.0f,  a/2.0f, 0 }, glm::vec3{1.0f}, 0);
+int o3 = addObject(0, glm::vec3{-R/2.0f, -a/2.0f, 0 }, glm::vec3{1.0f}, 0);
+
+float v = sqrt(1.0f / a);           // orbital speed (G=1, equal masses)
+
+uploadInstanceData();
+
+size_t phy1 = addDynamicBody(0, o1, 1.0f, getData(0, o1).position);
+size_t phy2 = addDynamicBody(0, o2, 1.0f, getData(0, o2).position);
+size_t phy3 = addDynamicBody(0, o3, 1.0f, getData(0, o3).position);
+
+// Tangential velocities — perpendicular to the radius vector for each body
+getphydata(phy1).velocity = glm::vec3({ 0,                  v,        0.0f });
+getphydata(phy2).velocity = glm::vec3({-v * sqrt(3.0f)/2.0f, -v * 0.5f, 0.0f });
+getphydata(phy3).velocity = glm::vec3({ v * sqrt(3.0f)/2.0f, -v * 0.5f, 0.0f });
+```

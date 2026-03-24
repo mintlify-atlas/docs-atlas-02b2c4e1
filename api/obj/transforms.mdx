@@ -1,0 +1,143 @@
+---
+title: Transforms
+description: Move, rotate, and scale OBJ object instances
+---
+
+```cpp
+#include <obj.h>
+```
+
+Two styles of transform are available:
+
+- **Absolute** — `objectTransform` replaces the current value.
+- **Incremental** — `translateObject`, `setObjectRotation`, and `scaleObject` add a delta to the current value.
+
+All functions set `dirty = true` on the instance. Call `updateInstanceMatrices()` and `uploadInstanceData()` before the next `drawScene()` to apply the changes.
+
+---
+
+## The `TransformParams` struct
+
+`objectTransform` accepts a `TransformParams` to set any combination of position, rotation, and scale in one call. Fields are `std::optional` — omit any field to leave it unchanged.
+
+```cpp
+struct TransformParams {
+    std::optional<glm::vec3> scale;
+    std::optional<glm::vec3> position;
+    std::optional<glm::vec3> rotation;
+};
+```
+
+---
+
+## Example
+
+```cpp
+// Set an absolute position (rotation and scale unchanged)
+objectTransform(0, o1, TransformParams{
+    .position = glm::vec3{1.0f, 0.0f, 0.0f}
+});
+
+// Incrementally rotate by 1 degree around Y each frame
+setObjectRotation(0, o1, glm::vec3{0.0f, glm::radians(1.0f), 0.0f});
+```
+
+---
+
+## Functions
+
+### `objectTransform`
+
+```cpp
+void objectTransform(int modelID, int objectID, TransformParams temp);
+```
+
+Sets absolute transform values for a single instance. Only the fields present in `temp` are written; absent fields leave the instance unchanged.
+
+<ParamField path="modelID" type="int" required>
+  Model index.
+</ParamField>
+
+<ParamField path="objectID" type="int" required>
+  Instance index returned by `addObject`.
+</ParamField>
+
+<ParamField path="temp" type="TransformParams" required>
+  Struct containing the fields to update. Each field is `std::optional<glm::vec3>` — pass only the fields you want to change.
+</ParamField>
+
+### `translateObject`
+
+```cpp
+glm::vec3 translateObject(int modelID, int objectID, glm::vec3 pos);
+```
+
+Adds `pos` to the instance's current position (incremental). Returns the new position. Returns `{0, 0, 0}` if `objectID` is out of range.
+
+<ParamField path="modelID" type="int" required>
+  Model index.
+</ParamField>
+
+<ParamField path="objectID" type="int" required>
+  Instance index returned by `addObject`.
+</ParamField>
+
+<ParamField path="pos" type="glm::vec3" required>
+  Delta to add to the current position.
+</ParamField>
+
+<ResponseField name="newPosition" type="glm::vec3">
+  The updated world-space position after the translation is applied.
+</ResponseField>
+
+### `setObjectRotation`
+
+```cpp
+glm::vec3 setObjectRotation(int modelID, int objectID, glm::vec3 rot);
+```
+
+Adds `rot` to the instance's current rotation (incremental). Rotation components are in radians. Returns the new rotation. Returns `{0, 0, 0}` if `objectID` is out of range.
+
+<Note>
+Despite the `set` prefix, this function **adds** to the existing rotation rather than replacing it. Use `objectTransform` with a `rotation` field to set an absolute rotation.
+</Note>
+
+<ParamField path="modelID" type="int" required>
+  Model index.
+</ParamField>
+
+<ParamField path="objectID" type="int" required>
+  Instance index returned by `addObject`.
+</ParamField>
+
+<ParamField path="rot" type="glm::vec3" required>
+  Rotation delta in radians to add around the X, Y, and Z axes.
+</ParamField>
+
+<ResponseField name="newRotation" type="glm::vec3">
+  The updated rotation vector (radians) after the delta is applied.
+</ResponseField>
+
+### `scaleObject`
+
+```cpp
+glm::vec3 scaleObject(int modelID, int objectID, glm::vec3 scale);
+```
+
+Adds `scale` to the instance's current scale (incremental). Returns the new scale. Returns `{0, 0, 0}` if `objectID` is out of range.
+
+<ParamField path="modelID" type="int" required>
+  Model index.
+</ParamField>
+
+<ParamField path="objectID" type="int" required>
+  Instance index returned by `addObject`.
+</ParamField>
+
+<ParamField path="scale" type="glm::vec3" required>
+  Scale delta to add along each axis.
+</ParamField>
+
+<ResponseField name="newScale" type="glm::vec3">
+  The updated scale vector after the delta is applied.
+</ResponseField>

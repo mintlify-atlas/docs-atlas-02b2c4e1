@@ -1,0 +1,163 @@
+---
+title: Rendering pipeline
+description: How fast_opengl organizes draw calls and GPU state
+---
+
+## Frame loop structure
+
+The main loop uses a fixed-timestep accumulator to decouple physics updates from frame rate:
+
+```cpp
+Uint64 NOW  = SDL_GetPerformanceCounter();
+Uint64 LAST = 0;
+double accumulator = 0.0;
+const double dt = 0.01;
+
+while (1) {
+    // ... event handling ...
+
+    NOW = SDL_GetPerformanceCounter();
+    double deltatime = (double)((NOW - LAST) * 1) / (double)SDL_GetPerformanceFrequency();
+    if (deltatime > 0.25) { deltatime = 0.25; }
+    LAST = NOW;
+    accumulator += deltatime;
+
+    while (accumulator >= dt) {
+        updateVelocityfirst(dt);
+        updateGravity();
+        updateVelocitysecond(dt);
+        accumulator -= dt;
+    }
+
+    // ... render ...
+    SDL_GL_SwapWindow(window);
+}
+```
+
+The accumulator cap of `0.25` seconds prevents the spiral-of-death when a frame takes unusually long.
+
+## Physics update order
+
+Each fixed step runs three functions in sequence:
+
+1. `updateVelocityfirst(dt)` — integrates velocity into position (first half-step)
+2. `updateGravity()` — applies gravitational acceleration between dynamic bodies
+3. `updateVelocitysecond(dt)` — applies the updated acceleration to velocity (second half-step)
+
+## Render order per frame
+
+After the physics loop drains the accumulator, the render sequence is:
+
+```cpp
+updateInstanceMatrices();
+uploadInstanceData();
+drawScene(view, projection);
+```
+
+1. **`updateInstanceMatrices`** — recomputes the model matrix for every dirty instance.
+2. **`uploadInstanceData`** — uploads the matrix and texture-index arrays to the GPU.
+3. **`drawScene`** — binds the shader, sets uniforms, and issues one `glDrawElementsInstanced` call per model.
+
+## Instanced rendering layout
+
+Each loaded model is represented by an `ObjModel` struct:
+
+```cpp
+struct ObjModel {
+  GLuint VAO, VBO, EBO;           // geometry
+  GLuint instanceMatrixVBO;       // per-instance mat4 (locations 3–6)
+  GLuint instanceTexIndexVBO;     // per-instance float texIndex (location 7)
+
+  int indexCount;
+  std::vector<instance> instances;
+  std::vector<glm::mat4> matrices;
+  std::vector<float> texIndices;
+  size_t matrixCapacity = 0;
+  size_t texCapacity    = 0;
+};
+```
+
+The geometry buffers (`VBO`, `EBO`) are static. The two instance buffers are re-uploaded every frame with `GL_DYNAMIC_DRAW`.
+
+## Dirty flag: lazy matrix recomputation
+
+`updateInstanceMatrices` skips any instance whose `dirty` flag is `false`:
+
+```cpp
+void updateInstanceMatrices()
+{
+    for (auto& m : models)
+    {
+        for (int i = 0; i < m.instances.size(); i++)
+        {
+            auto& inst = m.instances[i];
+            if (!inst.dirty) continue;
+
+            glm::mat4 mat(1.0f);
+            mat = glm::translate(mat, inst.position);
+            mat = glm::rotate(mat, inst.rotation.x, {1,0,0});
+            mat = glm::rotate(mat, inst.rotation.y, {0,1,0});
+            mat = glm::rotate(mat, inst.rotation.z, {0,0,1});
+            mat = glm::scale(mat, inst.scale);
+
+            m.matrices[i] = mat;
+            inst.dirty = false;
+        }
+    }
+}
+```
+
+Any mutation helper (`setObjectRotation`, `translateObject`, `scaleObject`, `objectTransform`) sets `dirty = true` on the affected instance.
+
+## Dynamic buffer growth
+
+`uploadInstanceData` doubles the GPU buffer capacity whenever the current data exceeds it:
+
+```cpp
+void uploadInstanceData()
+{
+    for (auto& m : models)
+    {
+        if (m.matrices.empty()) continue;
+
+        size_t msize = m.matrices.size() * sizeof(glm::mat4);
+        glBindBuffer(GL_ARRAY_BUFFER, m.instanceMatrixVBO);
+
+        if (msize > m.matrixCapacity)
+        {
+            m.matrixCapacity = msize * 2;
+            glBufferData(GL_ARRAY_BUFFER, m.matrixCapacity, nullptr, GL_DYNAMIC_DRAW);
+        }
+        glBufferSubData(GL_ARRAY_BUFFER, 0, msize, m.matrices.data());
+
+        size_t tsize = m.texIndices.size() * sizeof(float);
+        glBindBuffer(GL_ARRAY_BUFFER, m.instanceTexIndexVBO);
+
+        if (tsize > m.texCapacity)
+        {
+            m.texCapacity = tsize * 2;
+            glBufferData(GL_ARRAY_BUFFER, m.texCapacity, nullptr, GL_DYNAMIC_DRAW);
+        }
+        glBufferSubData(GL_ARRAY_BUFFER, 0, tsize, m.texIndices.data());
+    }
+}
+```
+
+The doubling strategy amortizes `glBufferData` reallocations to O(log n) over the lifetime of the program.
+
+## Depth testing
+
+```cpp
+glEnable(GL_DEPTH_TEST);
+glDepthFunc(GL_LESS);
+```
+
+Depth testing is enabled once at startup. The depth buffer is cleared at the start of every frame alongside the color buffer:
+
+```cpp
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+```
+
+## MSAA
+
+8× multisampling is requested via SDL2 attributes before window creation and activated with `glEnable(GL_MULTISAMPLE)` after GLAD loads. No additional render-target setup is required; SDL2 creates the multisample framebuffer automatically.

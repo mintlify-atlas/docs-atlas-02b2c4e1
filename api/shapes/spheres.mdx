@@ -1,0 +1,283 @@
+---
+title: Spheres
+description: Instanced icosphere rendering API
+---
+
+```cpp
+#include <shapes.h>
+```
+
+The sphere system renders any number of icospheres in a single instanced draw call. Geometry is generated procedurally from a base icosahedron subdivided to the requested quality level. Each sphere can carry either a flat RGBA color or a texture index.
+
+## Example
+
+```cpp
+std::vector<std::string> tt = {}; // no textures — color-only spheres
+
+initspheresystem(tt, 3);
+
+int s1 = addSphere(2.0, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+addSphere(3.0, glm::vec3(2.0f, 2.0f, 2.0f), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
+bufferInstanceDataSphere();
+
+// in render loop:
+drawInstancedSpheres(view, projection);
+```
+
+---
+
+## Initialization
+
+### `initspheresystem`
+
+```cpp
+void initspheresystem(const std::vector<std::string>& texturePaths, int divisions);
+```
+
+Initialises the sphere shader, generates the icosphere geometry, and loads the texture array. Must be called before any `addSphere` or draw call.
+
+<ParamField path="texturePaths" type="const std::vector<std::string>&" required>
+  Ordered list of image file paths to load into the texture array. Pass an empty vector for color-only spheres.
+</ParamField>
+
+<ParamField path="divisions" type="int" required>
+  Number of subdivision iterations applied to the base icosahedron. Higher values produce a smoother sphere at the cost of more vertices. A value of `3` is a reasonable starting point for most scenes.
+</ParamField>
+
+---
+
+## Adding spheres
+
+### `addSphere` (color)
+
+```cpp
+int addSphere(float radius, glm::vec3 position, glm::vec4 color);
+```
+
+Adds a flat-colored sphere instance.
+
+<ParamField path="radius" type="float" required>
+  Radius of the sphere in world units.
+</ParamField>
+
+<ParamField path="position" type="glm::vec3" required>
+  World-space position of the sphere's centre.
+</ParamField>
+
+<ParamField path="color" type="glm::vec4" required>
+  RGBA color in the range `[0.0, 1.0]` per channel.
+</ParamField>
+
+<ResponseField name="sphereID" type="int">
+  Integer handle for subsequent transform and query calls.
+</ResponseField>
+
+### `addSphere` (texture)
+
+```cpp
+int addSphere(float radius, glm::vec3 position, float textureIndex);
+```
+
+Adds a textured sphere instance.
+
+<ParamField path="radius" type="float" required>
+  Radius in world units.
+</ParamField>
+
+<ParamField path="position" type="glm::vec3" required>
+  World-space position of the sphere's centre.
+</ParamField>
+
+<ParamField path="textureIndex" type="float" required>
+  Zero-based index into the texture array supplied to `initspheresystem`.
+</ParamField>
+
+<ResponseField name="sphereID" type="int">
+  Integer handle for subsequent transform and query calls.
+</ResponseField>
+
+---
+
+## Rendering
+
+### `bufferInstanceDataSphere`
+
+```cpp
+void bufferInstanceDataSphere();
+```
+
+Uploads all sphere instance data to the GPU. Call once after all `addSphere` calls and before the first `drawInstancedSpheres`.
+
+### `drawInstancedSpheres`
+
+```cpp
+void drawInstancedSpheres(glm::mat4 view, glm::mat4 pers);
+```
+
+Issues a single instanced draw call that renders every registered sphere. Call each frame inside your render loop.
+
+<ParamField path="view" type="glm::mat4" required>
+  View matrix, typically from `glm::lookAt`.
+</ParamField>
+
+<ParamField path="pers" type="glm::mat4" required>
+  Projection matrix, typically from `glm::perspective`.
+</ParamField>
+
+---
+
+## Transforms and queries
+
+### `SphereTransform` (scale + position)
+
+```cpp
+void SphereTransform(int ID, glm::vec3 scaling, glm::vec3 position);
+```
+
+Sets the scale and position of a sphere. Both values are absolute.
+
+<ParamField path="ID" type="int" required>
+  Handle returned by `addSphere`.
+</ParamField>
+
+<ParamField path="scaling" type="glm::vec3" required>
+  Scale factors along each axis.
+</ParamField>
+
+<ParamField path="position" type="glm::vec3" required>
+  New world-space position.
+</ParamField>
+
+### `SphereTransform` (scale only)
+
+```cpp
+void SphereTransform(int ID, glm::vec3 scaling);
+```
+
+Sets only the scale of a sphere, leaving its position unchanged.
+
+<ParamField path="ID" type="int" required>
+  Handle returned by `addSphere`.
+</ParamField>
+
+<ParamField path="scaling" type="glm::vec3" required>
+  New scale factors along each axis.
+</ParamField>
+
+### `getspherepos`
+
+```cpp
+glm::vec3 getspherepos(int id);
+```
+
+Returns the current world-space position of a sphere.
+
+<ParamField path="id" type="int" required>
+  Handle returned by `addSphere`.
+</ParamField>
+
+<ResponseField name="position" type="glm::vec3">
+  Current world-space position.
+</ResponseField>
+
+### `getspheresize`
+
+```cpp
+glm::vec3 getspheresize(int id);
+```
+
+Returns the current scale of a sphere.
+
+<ParamField path="id" type="int" required>
+  Handle returned by `addSphere`.
+</ParamField>
+
+<ResponseField name="scale" type="glm::vec3">
+  Current scale along each axis.
+</ResponseField>
+
+### `setSphereColor`
+
+```cpp
+void setSphereColor(int id, glm::vec4 color);
+```
+
+Updates the color of a sphere instance at runtime.
+
+<ParamField path="id" type="int" required>
+  Handle returned by `addSphere`.
+</ParamField>
+
+<ParamField path="color" type="glm::vec4" required>
+  New RGBA color in the range `[0.0, 1.0]` per channel.
+</ParamField>
+
+### `updatesphereall`
+
+```cpp
+void updatesphereall();
+```
+
+Recomputes and re-uploads instance data for every sphere.
+
+### `updatspherebyid`
+
+```cpp
+void updatspherebyid(int id);
+```
+
+<Note>
+Note the spelling: `updatspherebyid` (no `e` in `updat`). This matches the function name as declared in `shapes.h`.
+</Note>
+
+Recomputes and re-uploads instance data for a single sphere.
+
+<ParamField path="id" type="int" required>
+  Handle returned by `addSphere`.
+</ParamField>
+
+---
+
+## Internal geometry helpers
+
+The following functions are used internally during icosphere construction. You do not need to call them directly.
+
+### `firstrun`
+
+```cpp
+void firstrun();
+```
+
+Builds the initial icosahedron vertex and index data before subdivision begins. Called automatically by `initspheresystem`.
+
+### `subdivide`
+
+```cpp
+void subdivide();
+```
+
+Performs one subdivision pass on the current mesh, splitting each triangle into four. Called `divisions` times by `initspheresystem`.
+
+### `midp`
+
+```cpp
+uint32_t midp(uint32_t p, uint32_t q, std::unordered_map<uint64_t, uint32_t>& cache);
+```
+
+Returns the index of the midpoint vertex between vertices `p` and `q`, inserting it into the mesh and caching the result to avoid duplicate vertices during subdivision.
+
+<ParamField path="p" type="uint32_t" required>
+  Index of the first endpoint vertex.
+</ParamField>
+
+<ParamField path="q" type="uint32_t" required>
+  Index of the second endpoint vertex.
+</ParamField>
+
+<ParamField path="cache" type="std::unordered_map<uint64_t, uint32_t>&" required>
+  Cache mapping edge keys to midpoint indices. Shared across all calls in a single subdivision pass.
+</ParamField>
+
+<ResponseField name="index" type="uint32_t">
+  Index of the midpoint vertex.
+</ResponseField>

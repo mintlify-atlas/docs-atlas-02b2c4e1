@@ -1,0 +1,86 @@
+---
+title: createwindow
+description: Create an SDL2 window (utility helper)
+---
+
+```cpp
+#include <createWindow.h>
+```
+
+`createwindow` is a thin wrapper around `SDL_Init` and `SDL_CreateWindow`. It initialises the SDL video subsystem and returns a plain SDL2 window with no OpenGL context attached.
+
+<Warning>
+This helper does **not** set up an OpenGL context. For OpenGL rendering you must use the manual sequence shown in the [quickstart](/quickstart): call `SDL_GL_SetAttribute` to configure the context version and profile, create the window with `SDL_WINDOW_OPENGL`, then call `SDL_GL_CreateContext` and load GLAD. See [how main.cpp does it](#opengl-context-setup) below.
+</Warning>
+
+## Function signature
+
+```cpp
+SDL_Window* createwindow(const char* title, int width, int height);
+```
+
+## Parameters
+
+<ParamField path="title" type="const char*" required>
+  The title string displayed in the window's title bar.
+</ParamField>
+
+<ParamField path="width" type="int" required>
+  Width of the window in pixels.
+</ParamField>
+
+<ParamField path="height" type="int" required>
+  Height of the window in pixels.
+</ParamField>
+
+## Return value
+
+<ResponseField name="window" type="SDL_Window*">
+  Pointer to the newly created SDL window. Returns `nullptr` if `SDL_CreateWindow` fails — check `SDL_GetError()` for details.
+</ResponseField>
+
+## Implementation
+
+The function calls `SDL_Init(SDL_INIT_VIDEO)`, then creates the window at an undefined position with `SDL_WINDOW_SHOWN`:
+
+```cpp
+SDL_Window* createwindow(const char* title, int width, int height) {
+    if (SDL_Init(SDL_INIT_VIDEO)) {
+        std::println("SDL failed to start {}", SDL_GetError());
+    }
+    SDL_Window* window = SDL_CreateWindow(
+        title,
+        SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED,
+        width, height,
+        SDL_WINDOW_SHOWN
+    );
+    return window;
+}
+```
+
+## OpenGL context setup
+
+Because `createwindow` uses `SDL_WINDOW_SHOWN` instead of `SDL_WINDOW_OPENGL`, it is not suitable for OpenGL rendering. In practice, `main.cpp` creates the window manually:
+
+```cpp
+SDL_Init(SDL_INIT_VIDEO);
+SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);
+
+SDL_Window* window = SDL_CreateWindow(
+    "My Window",
+    SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    1280, 720,
+    SDL_WINDOW_OPENGL
+);
+
+SDL_GLContext ctx = SDL_GL_CreateContext(window);
+gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress);
+glEnable(GL_MULTISAMPLE);
+```
+
+Use this sequence whenever you need OpenGL 4.0 core profile rendering.

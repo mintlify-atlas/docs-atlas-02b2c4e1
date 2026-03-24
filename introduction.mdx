@@ -1,0 +1,48 @@
+---
+title: Introduction
+description: What fast_opengl is and how it's organized
+---
+
+fast_opengl is a C++ library that wraps OpenGL 3.3+ to make it straightforward to render shapes, load and display OBJ models, and simulate gravitational physics. It manages shader compilation, instanced rendering, texture arrays, and a leapfrog integrator so you can focus on scene logic rather than boilerplate.
+
+## Modules
+
+The library is organized into five headers:
+
+| Header | Purpose |
+| --- | --- |
+| `createWindow.h` | Creates an SDL2 window with an OpenGL context |
+| `shapes.h` | Instanced rendering of spheres, icospheres, cubes, and a reference grid |
+| `obj.h` | Loads `.obj` files via tinyobjloader and renders instances using a shared texture array |
+| `phy.h` | N-body gravitational physics using a leapfrog (Störmer–Verlet) integrator |
+| `glslread.h` | Reads GLSL source files from disk at runtime |
+
+## Module descriptions
+
+**`createWindow.h`** — Wraps `SDL_Init`, `SDL_CreateWindow`, and the necessary `SDL_GL_SetAttribute` calls into a single `createwindow()` function.
+
+**`shapes.h`** — Provides both immediate-mode draw helpers (`spheredraw`, `cubedraw`, `griddraw`) and an instanced rendering system. The instanced path (`initspheresystem`, `addSphere`, `drawInstancedSpheres`, etc.) batches all geometry into a single draw call per shape type.
+
+**`obj.h`** — `initSystem` loads one or more `.obj` files and a matching texture array. Each model supports multiple instances added with `addObject`. Per-frame, call `updateInstanceMatrices`, `uploadInstanceData`, and `drawScene` to render the full scene.
+
+**`phy.h`** — Stores a list of `body` structs. Each body holds mass, position, velocity, acceleration, and a reference to an `obj.h` instance. Calling `updateVelocityfirst`, `updateGravity`, and `updateVelocitysecond` each fixed timestep advances the simulation and automatically writes new positions back to the renderer.
+
+**`glslread.h`** — Exposes a single function `readFile(path)` that returns the contents of a GLSL shader file as a `std::string`.
+
+## Dependencies
+
+| Library | Role |
+| --- | --- |
+| SDL2 | Window creation, input, timing |
+| SDL2_image | PNG/JPEG texture loading |
+| SDL2_ttf | TrueType font rendering |
+| OpenGL / libGL | GPU rendering API |
+| GLAD | OpenGL function pointer loader |
+| GLM | Vector and matrix math |
+| tinyobjloader | Wavefront OBJ parsing |
+
+Refer to the [Building](/building) page for installation instructions.
+
+## Next steps
+
+Head to the [Quickstart](/quickstart) to build a running three-body simulation in a few minutes.

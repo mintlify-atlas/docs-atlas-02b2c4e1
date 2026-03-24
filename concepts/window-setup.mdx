@@ -1,0 +1,130 @@
+---
+title: Window setup
+description: Creating an SDL2 window with an OpenGL 4.0 core context
+---
+
+## Initializing SDL2
+
+The entry point calls `SDL_Init(SDL_INIT_VIDEO)` and then sets all required OpenGL context attributes before the window is created:
+
+```cpp
+SDL_Init(SDL_INIT_VIDEO);
+SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
+         SDL_GL_CONTEXT_PROFILE_CORE);
+SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);
+```
+
+| Attribute | Value | Effect |
+|---|---|---|
+| `SDL_GL_CONTEXT_MAJOR_VERSION` | `4` | Requires OpenGL 4.x |
+| `SDL_GL_CONTEXT_MINOR_VERSION` | `0` | Minimum version 4.0 |
+| `SDL_GL_CONTEXT_PROFILE_MASK` | `SDL_GL_CONTEXT_PROFILE_CORE` | Core profile — deprecated features removed |
+| `SDL_GL_MULTISAMPLEBUFFERS` | `1` | Enable MSAA buffer |
+| `SDL_GL_MULTISAMPLESAMPLES` | `8` | 8× multisampling |
+
+## Creating the window and context
+
+```cpp
+const int screenwidth  = 1280;
+const int screenheight = 720;
+
+SDL_Window* window = SDL_CreateWindow(
+    "OpenGL Test",
+    SDL_WINDOWPOS_CENTERED,
+    SDL_WINDOWPOS_CENTERED,
+    screenwidth, screenheight,
+    SDL_WINDOW_OPENGL
+);
+SDL_GLContext ctx = SDL_GL_CreateContext(window);
+```
+
+The `SDL_WINDOW_OPENGL` flag tells SDL2 to create the window with an OpenGL-compatible surface. `SDL_GL_CreateContext` binds the context to the window and makes it current on the calling thread.
+
+## Loading OpenGL function pointers with GLAD
+
+After the context is current, GLAD loads every OpenGL function pointer:
+
+```cpp
+if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
+    printf("Failed to init GLAD\n");
+    return -1;
+}
+glEnable(GL_MULTISAMPLE);
+```
+
+`SDL_GL_GetProcAddress` is passed as the loader so GLAD retrieves the platform-specific function addresses that SDL2 already resolved. `glEnable(GL_MULTISAMPLE)` activates the 8× MSAA buffer that was requested above.
+
+## Viewport and resize handling
+
+The event loop listens for `SDL_WINDOWEVENT_RESIZED` and updates both the OpenGL viewport and the projection matrix:
+
+```cpp
+if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
+    int newWidth  = e.window.data1;
+    int newHeight = e.window.data2;
+    glViewport(0, 0, newWidth, newHeight);
+
+    if (newHeight > 0) {
+        float newasp = (float)newWidth / (float)newHeight;
+        projection = glm::perspective(glm::radians(45.0f), newasp, 0.1f, 100.0f);
+        aspectratio = newasp;
+    }
+}
+```
+
+## Camera: mouse look and keyboard movement
+
+### Mouse capture
+
+```cpp
+SDL_SetRelativeMouseMode(SDL_TRUE);
+```
+
+This locks the cursor to the window and delivers relative motion deltas through `SDL_MOUSEMOTION` events, preventing the cursor from leaving the window.
+
+### Yaw / pitch mouse look
+
+```cpp
+if (e.type == SDL_MOUSEMOTION) {
+    float xoffset = e.motion.xrel;
+    float yoffset = -e.motion.yrel;
+    float sensitivity = 0.1f;
+
+    yaw   += xoffset * sensitivity;
+    pitch += yoffset * sensitivity;
+
+    if (pitch >  89.0f) pitch =  89.0f;
+    if (pitch < -89.0f) pitch = -89.0f;
+
+    glm::vec3 direction;
+    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    direction.y = sin(glm::radians(pitch));
+    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    targetdir = glm::normalize(direction);
+}
+```
+
+Yaw starts at `-90.0f` so the camera initially points toward negative Z. Pitch is clamped to ±89° to prevent gimbal flip at the poles.
+
+### WASD + Space / LShift movement
+
+```cpp
+glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+glm::vec3 right       = glm::normalize(glm::cross(targetdir, worldUp));
+glm::vec3 flatForward = glm::normalize(glm::vec3(targetdir.x, 0.0f, targetdir.z));
+float cameraSpeed = deltatime * 8;
+
+if (currentkeystates[SDL_SCANCODE_W]) camerapos += flatForward * cameraSpeed;
+if (currentkeystates[SDL_SCANCODE_S]) camerapos -= flatForward * cameraSpeed;
+if (currentkeystates[SDL_SCANCODE_D]) camerapos += right       * cameraSpeed;
+if (currentkeystates[SDL_SCANCODE_A]) camerapos -= right       * cameraSpeed;
+if (currentkeystates[SDL_SCANCODE_SPACE])  camerapos += worldUp * cameraSpeed;
+if (currentkeystates[SDL_SCANCODE_LSHIFT]) camerapos -= worldUp * cameraSpeed;
+
+view = glm::lookAt(camerapos, camerapos + targetdir, worldUp);
+```
+
+Forward/backward movement uses a flat projection of `targetdir` onto the XZ plane so vertical mouse aim does not affect horizontal speed. Space and Left Shift move the camera straight up and down in world space.

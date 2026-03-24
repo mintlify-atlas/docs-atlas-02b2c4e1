@@ -1,0 +1,125 @@
+---
+title: System initialization
+description: Initialize the OBJ rendering system with models and textures
+---
+
+```cpp
+#include <obj.h>
+```
+
+The OBJ system loads one or more `.obj` files and a shared texture array, then exposes instanced rendering of those models. Call `initSystem` once at startup before adding any objects.
+
+## Example
+
+```cpp
+initSystem({"assets/check.obj"}, {"assets/map/nightearth.png"});
+```
+
+This loads one model (model ID `0`) and one texture (texture index `0`).
+
+---
+
+## Functions
+
+### `initSystem`
+
+```cpp
+void initSystem(
+    const std::vector<std::string>& objPaths,
+    const std::vector<std::string>& texPaths
+);
+```
+
+Initialises the entire OBJ rendering system. Internally calls `initShader`, loads every `.obj` file with `loadOBJ`, and builds the texture array with `createTextureArray`.
+
+<ParamField path="objPaths" type="const std::vector<std::string>&" required>
+  Ordered list of `.obj` file paths to load. Each path becomes a model; its zero-based position in this list is its `modelID`.
+</ParamField>
+
+<ParamField path="texPaths" type="const std::vector<std::string>&" required>
+  Ordered list of image file paths to load into the shared texture array. Each path's zero-based position is its `texID`.
+</ParamField>
+
+### `loadOBJ`
+
+```cpp
+ObjModel loadOBJ(const std::string& path);
+```
+
+Parses a `.obj` file using tinyobjloader, deduplicates vertices, uploads geometry to the GPU, and returns an `ObjModel`. Called automatically by `initSystem` — you only need this directly if you want to load models outside of `initSystem`.
+
+<ParamField path="path" type="const std::string&" required>
+  File path to the `.obj` file.
+</ParamField>
+
+<ResponseField name="model" type="ObjModel">
+  Populated `ObjModel` struct with uploaded VAO, VBO, and EBO.
+</ResponseField>
+
+### `createTextureArray`
+
+```cpp
+void createTextureArray(const std::vector<std::string>& paths);
+```
+
+Loads each image in `paths` and uploads all layers into a single `GL_TEXTURE_2D_ARRAY`. All textures must have the same dimensions; dimensions are taken from the first image. Called automatically by `initSystem`.
+
+<ParamField path="paths" type="const std::vector<std::string>&" required>
+  Ordered list of image file paths.
+</ParamField>
+
+### `initShader`
+
+```cpp
+void initShader();
+```
+
+Compiles and links the OBJ vertex and fragment shaders. Loads `shaders/obj_vertex.glsl` and `shaders/obj_fragment.glsl` from the working directory. Called automatically by `initSystem` — you do not need to call this directly.
+
+### `modelCount`
+
+```cpp
+int modelCount();
+```
+
+Returns the total number of models currently loaded.
+
+<ResponseField name="count" type="int">
+  Number of loaded models.
+</ResponseField>
+
+---
+
+## The `ObjModel` struct
+
+Each loaded model is represented internally as an `ObjModel`:
+
+```cpp
+struct ObjModel {
+  GLuint VAO, VBO, EBO;
+  GLuint instanceMatrixVBO;
+  GLuint instanceTexIndexVBO;
+  int indexCount;
+  std::vector<instance> instances;
+  std::vector<glm::mat4> matrices;
+  std::vector<float> texIndices;
+  size_t matrixCapacity;
+  size_t texCapacity;
+};
+```
+
+| Field | Description |
+|---|---|
+| `VAO`, `VBO`, `EBO` | OpenGL objects for the model's static geometry. |
+| `instanceMatrixVBO` | VBO holding per-instance transformation matrices. |
+| `instanceTexIndexVBO` | VBO holding per-instance texture indices. |
+| `indexCount` | Number of indices in the model's index buffer. |
+| `instances` | CPU-side list of `instance` data for each object. |
+| `matrices` | Computed model matrices, one per instance. |
+| `texIndices` | Texture index for each instance. |
+| `matrixCapacity` | Current allocated GPU capacity for the matrix VBO (bytes). |
+| `texCapacity` | Current allocated GPU capacity for the texture index VBO (bytes). |
+
+<Note>
+`ObjModel` is managed internally. Access model data through the query functions rather than modifying the struct directly.
+</Note>

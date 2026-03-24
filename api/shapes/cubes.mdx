@@ -1,0 +1,232 @@
+---
+title: Cubes
+description: Instanced cube rendering API
+---
+
+```cpp
+#include <shapes.h>
+```
+
+The cube system renders any number of cubes in a single instanced draw call. Each cube can carry either a texture (by index into the texture array) or a flat RGBA color. Call the setup functions once at startup, then call the draw function each frame.
+
+## Example
+
+```cpp
+std::vector<std::string> textures = {
+    "assets/map/texture_check.png",  // index 0
+};
+
+initcubesystem(textures);
+
+int c1 = addCube(1.0f, glm::vec3(0.0f, 0.0f, 0.0f), 0.0f);
+addCube(1.0f, glm::vec3(1.0f, 1.0f, 1.0f), 0.0f);
+addCube(1.0f, glm::vec3(2, 0, 0), glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+bufferInstanceData();
+
+// in render loop:
+drawInstancedCubes(view, projection);
+```
+
+---
+
+## Initialization
+
+### `initcubesystem`
+
+```cpp
+void initcubesystem(const std::vector<std::string>& texturePaths);
+```
+
+Initialises the cube shader, vertex buffers, and texture array. Must be called before any `addCube` or draw call.
+
+<ParamField path="texturePaths" type="const std::vector<std::string>&" required>
+  Ordered list of image file paths to load into the texture array. Each path becomes a texture layer; pass its zero-based index as `textureIndex` when adding cubes.
+</ParamField>
+
+---
+
+## Adding cubes
+
+### `addCube` (texture)
+
+```cpp
+int addCube(float side, glm::vec3 position, float textureIndex);
+```
+
+Adds a textured cube instance to the system.
+
+<ParamField path="side" type="float" required>
+  Length of each edge of the cube in world units.
+</ParamField>
+
+<ParamField path="position" type="glm::vec3" required>
+  World-space position of the cube's centre.
+</ParamField>
+
+<ParamField path="textureIndex" type="float" required>
+  Zero-based index into the texture array supplied to `initcubesystem`.
+</ParamField>
+
+<ResponseField name="cubeID" type="int">
+  Integer handle used to reference this cube in transform and query functions.
+</ResponseField>
+
+### `addCube` (color)
+
+```cpp
+int addCube(float side, glm::vec3 position, glm::vec4 color);
+```
+
+Adds a flat-colored cube instance. Use this overload when no texture is needed.
+
+<ParamField path="side" type="float" required>
+  Length of each edge in world units.
+</ParamField>
+
+<ParamField path="position" type="glm::vec3" required>
+  World-space position of the cube's centre.
+</ParamField>
+
+<ParamField path="color" type="glm::vec4" required>
+  RGBA color in the range `[0.0, 1.0]` per channel.
+</ParamField>
+
+<ResponseField name="cubeID" type="int">
+  Integer handle for subsequent transform and query calls.
+</ResponseField>
+
+---
+
+## Rendering
+
+### `bufferInstanceData`
+
+```cpp
+void bufferInstanceData();
+```
+
+Uploads all pending cube instance data to the GPU. Call this once after all `addCube` calls and before the first `drawInstancedCubes`. If you add cubes dynamically at runtime, call it again after each batch of additions.
+
+### `drawInstancedCubes`
+
+```cpp
+void drawInstancedCubes(glm::mat4 view, glm::mat4 pers);
+```
+
+Issues a single instanced draw call that renders every registered cube. Call this each frame inside your render loop.
+
+<ParamField path="view" type="glm::mat4" required>
+  View matrix, typically from `glm::lookAt`.
+</ParamField>
+
+<ParamField path="pers" type="glm::mat4" required>
+  Projection matrix, typically from `glm::perspective`.
+</ParamField>
+
+---
+
+## Transforms and queries
+
+### `CubeTransform` (scale + position)
+
+```cpp
+void CubeTransform(int cubeID, glm::vec3 scaling, glm::vec3 position);
+```
+
+Sets the scale and position of a cube. Both values are absolute — they replace the current transform.
+
+<ParamField path="cubeID" type="int" required>
+  Handle returned by `addCube`.
+</ParamField>
+
+<ParamField path="scaling" type="glm::vec3" required>
+  Scale factors along each axis.
+</ParamField>
+
+<ParamField path="position" type="glm::vec3" required>
+  New world-space position.
+</ParamField>
+
+### `CubeTransform` (scale only)
+
+```cpp
+void CubeTransform(int cubeID, glm::vec3 scaling);
+```
+
+Sets only the scale of a cube, leaving its position unchanged.
+
+<ParamField path="cubeID" type="int" required>
+  Handle returned by `addCube`.
+</ParamField>
+
+<ParamField path="scaling" type="glm::vec3" required>
+  New scale factors along each axis.
+</ParamField>
+
+### `getcubepos`
+
+```cpp
+glm::vec3 getcubepos(int id);
+```
+
+Returns the current world-space position of a cube.
+
+<ParamField path="id" type="int" required>
+  Handle returned by `addCube`.
+</ParamField>
+
+<ResponseField name="position" type="glm::vec3">
+  Current world-space position.
+</ResponseField>
+
+### `getcubesize`
+
+```cpp
+glm::vec3 getcubesize(int id);
+```
+
+Returns the current scale of a cube.
+
+<ParamField path="id" type="int" required>
+  Handle returned by `addCube`.
+</ParamField>
+
+<ResponseField name="scale" type="glm::vec3">
+  Current scale along each axis.
+</ResponseField>
+
+### `setCubeColor`
+
+```cpp
+void setCubeColor(int id, glm::vec4 color);
+```
+
+Updates the color of a cube instance at runtime.
+
+<ParamField path="id" type="int" required>
+  Handle returned by `addCube`.
+</ParamField>
+
+<ParamField path="color" type="glm::vec4" required>
+  New RGBA color in the range `[0.0, 1.0]` per channel.
+</ParamField>
+
+### `updatecubeall`
+
+```cpp
+void updatecubeall();
+```
+
+Recomputes and re-uploads instance data for every cube. Call this after modifying transforms or colors when you want all changes to take effect.
+
+### `updatecubebyid`
+
+```cpp
+void updatecubebyid(int id);
+```
+
+Recomputes and re-uploads instance data for a single cube. More efficient than `updatecubeall` when only one cube has changed.
+
+<ParamField path="id" type="int" required>
+  Handle returned by `addCube`.
+</ParamField>

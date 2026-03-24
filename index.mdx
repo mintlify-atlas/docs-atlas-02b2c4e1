@@ -1,97 +1,66 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: fast_opengl
+description: A fast, easy-to-use C++ library providing functional abstractions over OpenGL 3.3+ for rendering shapes, loading OBJ models, managing textures, and simulating basic physics.
 ---
 
-## Setting up
-
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a working OpenGL scene running in minutes with instanced rendering and physics.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Building" icon="hammer" href="/building">
+    Set up your build environment and compile the library with Make and Clang.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="OBJ Models" icon="cube" href="/guides/obj-models">
+    Load and render 3D OBJ models with texture arrays and per-instance transforms.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/obj/system">
+    Explore the full C++ API surface for rendering, physics, and utilities.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What is fast_opengl?
 
-Everything you need to create world-class documentation.
+**fast_opengl** is a C++ library that wraps OpenGL 3.3+ with a simple, functional interface. Instead of managing VAOs, VBOs, shaders, and draw calls manually, fast_opengl provides high-level functions for common tasks:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+- Render thousands of cubes or spheres with a single call using GPU instancing
+- Load `.obj` models and place multiple instances with independent transforms
+- Simulate N-body gravitational physics using leapfrog integration
+- Load GLSL shaders from files at runtime
+- Create an SDL2 window with an OpenGL 4.0 core context in one call
 
-## Need inspiration?
+## Key features
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="Instanced rendering" icon="layer-group">
+    Render up to millions of cubes or icospheres in a single draw call using `glDrawElementsInstanced`. Each instance has its own position, scale, rotation, and texture index.
+  </Card>
+  <Card title="OBJ model loading" icon="box-open">
+    Load any `.obj` file via tinyobjloader. Multiple models and instances are managed in a central scene system with lazy matrix updates.
+  </Card>
+  <Card title="N-body physics" icon="atom">
+    Attach dynamic bodies to rendered objects and simulate gravitational attraction between all bodies using a Leapfrog (Verlet) integrator with softening.
+  </Card>
+  <Card title="Runtime GLSL shaders" icon="file-code">
+    Shaders are read from `.glsl` files at runtime, making it easy to iterate without recompiling. Each subsystem compiles and links its own shader program.
+  </Card>
+  <Card title="Texture arrays" icon="images">
+    Bulk-load PNG textures into a `GL_TEXTURE_2D_ARRAY` using SDL2_image. Each instance references a texture by index, enabling varied appearances with one draw call.
+  </Card>
+  <Card title="Procedural icospheres" icon="globe">
+    Generate icospheres at any subdivision level. Higher divisions produce smoother spheres at the cost of more vertices.
+  </Card>
+</CardGroup>
+
+## Architecture overview
+
+fast_opengl is organized into independent subsystems, each with its own header and source file:
+
+| Module | Header | Purpose |
+|---|---|---|
+| Window | `createWindow.h` | SDL2 window + OpenGL context creation |
+| Shapes | `shapes.h` | Instanced cubes, spheres, icospheres, grid |
+| OBJ Rendering | `obj.h` | OBJ model loading, instancing, transforms |
+| Physics | `phy.h` | N-body gravity simulation |
+| GLSL Loader | `glslread.h` | Read shader source files from disk |
+
+Each subsystem maintains its own internal state via static globals and exposes a small, flat C-style function API callable from any C++ translation unit.

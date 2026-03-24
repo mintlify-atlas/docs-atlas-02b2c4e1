@@ -1,0 +1,130 @@
+---
+title: Instanced rendering
+description: How fast_opengl uses GPU instancing to render thousands of objects efficiently
+---
+
+Instanced rendering allows you to draw thousands of identical meshes in a single draw call by passing per-instance data (transform matrix, texture index) to the GPU via instance buffer objects.
+
+fast_opengl uses `glDrawElementsInstanced` for all instanced systems (cubes, spheres, and OBJ models).
+
+## Why instancing matters
+
+Without instancing, rendering N objects requires N draw calls. Each draw call has significant CPU overhead (state validation, driver processing). For 10,000 cubes, that's 10,000 draw calls per frame.
+
+With instancing, all 10,000 cubes are rendered in **a single draw call** — only the per-instance data differs.
+
+## How fast_opengl implements instancing
+
+For the OBJ system, each `ObjModel` has the following GPU buffers:
+
+| Buffer | Attribute slot(s) | Data per instance |
+|---|---|---|
+| `VBO` | 0 (position), 2 (UV) | Shared vertex geometry |
+| `EBO` | — | Shared index buffer |
+| `instanceMatrixVBO` | 3, 4, 5, 6 | `mat4` transform (4 × vec4) |
+| `instanceTexIndexVBO` | 7 | `float` texture index |
+
+The key is `glVertexAttribDivisor(attrib, 1)` — this tells OpenGL to advance the attribute once per **instance** rather than once per vertex.
+
+```cpp objrender.cpp
+// Each mat4 needs 4 vec4 attribute slots (3, 4, 5, 6)
+size_t vec4Size = sizeof(glm::vec4);
+for (int i = 0; i < 4; i++) {
+    glEnableVertexAttribArray(3 + i);
+    glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE,
+                         4 * vec4Size, (void*)(i * vec4Size));
+    glVertexAttribDivisor(3 + i, 1); // advance once per instance
+}
+
+// Texture index at slot 7
+glEnableVertexAttribArray(7);
+glVertexAttribPointer(7, 1, GL_FLOAT, GL_FALSE, sizeof(float), (void*)0);
+glVertexAttribDivisor(7, 1);
+```
+
+## Dynamic buffer growth
+
+Instance buffers start empty and grow automatically. When the number of instances exceeds the current buffer capacity, the buffer is reallocated at **double the required size** to amortize future growth:
+
+```cpp objrender.cpp
+size_t msize = m.matrices.size() * sizeof(glm::mat4);
+glBindBuffer(GL_ARRAY_BUFFER, m.instanceMatrixVBO);
+
+if (msize > m.matrixCapacity) {
+    m.matrixCapacity = msize * 2; // double the capacity
+    glBufferData(GL_ARRAY_BUFFER, m.matrixCapacity, nullptr, GL_DYNAMIC_DRAW);
+}
+glBufferSubData(GL_ARRAY_BUFFER, 0, msize, m.matrices.data());
+```
+
+This means the first `uploadInstanceData` call after adding instances may trigger a buffer reallocation. Subsequent calls use `glBufferSubData` which is fast.
+
+## The dirty flag
+
+Recalculating model matrices every frame is wasteful if nothing moved. fast_opengl uses a `dirty` flag on each instance:
+
+```cpp
+struct instance {
+    glm::vec3 position;
+    glm::vec3 scale;
+    glm::vec3 rotation;
+    bool dirty = true; // recompute matrix on next updateInstanceMatrices()
+};
+```
+
+`updateInstanceMatrices` skips instances where `dirty == false`:
+
+```cpp objrender.cpp
+for (auto& m : models) {
+    for (int i = 0; i < m.instances.size(); i++) {
+        auto& inst = m.instances[i];
+        if (!inst.dirty) continue; // skip unchanged instances
+
+        glm::mat4 mat(1.0f);
+        mat = glm::translate(mat, inst.position);
+        mat = glm::rotate(mat, inst.rotation.x, {1,0,0});
+        mat = glm::rotate(mat, inst.rotation.y, {0,1,0});
+        mat = glm::rotate(mat, inst.rotation.z, {0,0,1});
+        mat = glm::scale(mat, inst.scale);
+
+        m.matrices[i] = mat;
+        inst.dirty = false; // clear flag
+    }
+}
+```
+
+## Per-frame sequence
+
+Every frame must call these three functions in order:
+
+```cpp
+updateInstanceMatrices(); // 1. Recompute matrices for dirty instances
+uploadInstanceData();     // 2. Push updated data to GPU buffers
+drawScene(view, proj);   // 3. Issue glDrawElementsInstanced
+```
+
+`drawScene` skips models with no instances:
+
+```cpp objrender.cpp
+for (int i = 0; i < models.size(); i++) {
+    ObjModel& m = models[i];
+    if (m.matrices.empty()) continue;
+    glBindVertexArray(m.VAO);
+    glDrawElementsInstanced(GL_TRIANGLES, m.indexCount,
+                            GL_UNSIGNED_INT, nullptr, m.matrices.size());
+}
+```
+
+## Performance tips
+
+<Tip>
+Batch all `addObject` / `addCube` / `addSphere` calls **before** the first `uploadInstanceData`. Adding instances during the render loop triggers repeated buffer uploads.
+</Tip>
+
+<Tip>
+If objects don't move (static scene elements), their `dirty` flag remains `false` after the first frame. `updateInstanceMatrices` will skip them with zero matrix recomputation cost.
+</Tip>
+
+<Note>
+All textures in a texture array must have the same dimensions. Load textures of the same resolution to avoid rendering artifacts.
+</Note>

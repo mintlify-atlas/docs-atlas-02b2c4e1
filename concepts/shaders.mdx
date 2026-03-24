@@ -1,0 +1,185 @@
+---
+title: Shaders
+description: How GLSL shaders are loaded and compiled at runtime
+---
+
+## Reading shader source: `readFile`
+
+Shader source is read from disk at startup by `readFile`, declared in `glslread.h`:
+
+```cpp
+std::string readFile(const std::string& path);
+```
+
+The implementation streams the entire file into a `std::string`:
+
+```cpp
+std::string readFile(const std::string& path) {
+    std::ifstream file(path);
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return buffer.str();
+}
+```
+
+Because shaders are plain text files on disk, you can edit them and re-run the binary without recompiling the C++ project.
+
+## Compiling a single shader stage: `compileShader`
+
+```cpp
+GLuint compileShader(const std::string& path, GLenum type) {
+    std::string src  = readFile(path);
+    const char* csrc = src.c_str();
+
+    GLuint s = glCreateShader(type);
+    glShaderSource(s, 1, &csrc, nullptr);
+    glCompileShader(s);
+
+    int  success;
+    char log[512];
+    glGetShaderiv(s, GL_COMPILE_STATUS, &success);
+
+    if (!success) {
+        glGetShaderInfoLog(s, 512, nullptr, log);
+        std::cout << "Shader error " << log << "\n" << std::endl;
+    }
+    return s;
+}
+```
+
+Pass `GL_VERTEX_SHADER` or `GL_FRAGMENT_SHADER` as `type`. Compilation errors are printed to stdout; the shader object is returned regardless so the rest of initialization continues.
+
+## Linking the object-rendering program: `initShader`
+
+```cpp
+void initShader() {
+    GLuint vs = compileShader("shaders/obj_vertex.glsl",   GL_VERTEX_SHADER);
+    GLuint fs = compileShader("shaders/obj_fragment.glsl", GL_FRAGMENT_SHADER);
+
+    shaderprogram = glCreateProgram();
+    glAttachShader(shaderprogram, vs);
+    glAttachShader(shaderprogram, fs);
+    glLinkProgram(shaderprogram);
+
+    viewLoc = glGetUniformLocation(shaderprogram, "view");
+    projLoc = glGetUniformLocation(shaderprogram, "projection");
+    texLoc  = glGetUniformLocation(shaderprogram, "textureArray");
+}
+```
+
+After linking, the three uniform locations are cached in static variables (`viewLoc`, `projLoc`, `texLoc`) so `glGetUniformLocation` is never called per-frame.
+
+## Shader files
+
+All GLSL files live in the `shaders/` directory:
+
+| File | Purpose |
+|---|---|
+| `obj_vertex.glsl` | Instanced object vertex shader |
+| `obj_fragment.glsl` | Instanced object fragment shader (samples `sampler2DArray`) |
+| `vet.glsl` | Standalone cube vertex shader |
+| `frag.glsl` | Standalone cube fragment shader |
+| `gridvex.glsl` | Debug grid vertex shader |
+| `gridfrag.glsl` | Debug grid fragment shader |
+| `sphere_fn_vertex.glsl` | Instanced sphere vertex shader |
+| `sphere_fn_frag.glsl` | Instanced sphere fragment shader |
+| `spherevex.glsl` | Sphere vertex shader (prototype) |
+| `spherefrag.glsl` | Sphere fragment shader (prototype) |
+| `cube_fn_vertex.glsl` | Cube function vertex shader |
+| `cube_fn_fragment.glsl` | Cube function fragment shader |
+
+## Uniform locations
+
+| Variable | GLSL name | Type | Set in |
+|---|---|---|---|
+| `viewLoc` | `view` | `mat4` | `drawScene` |
+| `projLoc` | `projection` | `mat4` | `drawScene` |
+| `texLoc` | `textureArray` | `sampler2DArray` | `drawScene` |
+
+## Passing uniforms in `drawScene`
+
+```cpp
+void drawScene(glm::mat4 view, glm::mat4 proj) {
+    glUseProgram(shaderprogram);
+
+    glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(proj));
+
+    glUniform1i(texLoc, 0);  // texture unit 0
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArrayID);
+
+    for (int i = 0; i < models.size(); i++) {
+        ObjModel& m = models[i];
+        if (m.matrices.empty()) continue;
+
+        glBindVertexArray(m.VAO);
+        glDrawElementsInstanced(GL_TRIANGLES, m.indexCount,
+                                GL_UNSIGNED_INT, nullptr, m.matrices.size());
+    }
+}
+```
+
+The view and projection matrices are passed as column-major floats via `glm::value_ptr`. The texture array is bound to texture unit 0 and the sampler uniform is set to `0` with `glUniform1i`.
+
+## obj_vertex.glsl
+
+```glsl
+#version 430 core
+
+layout (location = 0) in vec3 aPos;
+layout (location = 2) in vec2 aTexCoord;
+
+// Instance matrix (mat4 takes 4 attribute slots)
+layout (location = 3) in vec4 iMat0;
+layout (location = 4) in vec4 iMat1;
+layout (location = 5) in vec4 iMat2;
+layout (location = 6) in vec4 iMat3;
+
+// Per-instance texture layer
+layout (location = 7) in float texIndex;
+
+uniform mat4 view;
+uniform mat4 projection;
+
+out vec2 TexCoord;
+flat out int TexIndex;
+
+void main()
+{
+    mat4 model = mat4(iMat0, iMat1, iMat2, iMat3);
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    TexCoord = aTexCoord;
+    TexIndex = int(texIndex);
+}
+```
+
+## obj_fragment.glsl
+
+```glsl
+#version 430 core
+
+in vec2 TexCoord;
+flat in int TexIndex;
+
+uniform sampler2DArray textureArray;
+
+out vec4 FragColor;
+
+void main()
+{
+    FragColor = texture(textureArray, vec3(TexCoord, TexIndex));
+}
+```
+
+The fragment shader samples the texture array by constructing a `vec3` from the UV coordinates and the integer layer index passed from the vertex shader.
+
+## Modifying shaders
+
+Shaders are read from disk each time the application starts. To change shader behaviour:
+
+1. Edit the relevant `.glsl` file in `shaders/`.
+2. Re-run the binary.
+
+No C++ recompilation is required.

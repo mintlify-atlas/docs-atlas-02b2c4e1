@@ -1,0 +1,158 @@
+---
+title: Physics simulation
+description: Simulate N-body gravitational attraction with Leapfrog integration
+---
+
+fast_opengl includes a simple N-body physics system that simulates gravitational attraction between any number of dynamic bodies. Each body is linked to a rendered object instance — position updates are automatically applied to the rendered mesh.
+
+## The body struct
+
+```cpp phy.h
+struct body {
+    float mass;
+    glm::vec3 pos;
+    glm::vec3 velocity;
+    glm::vec3 acceleration;
+    int modelID;
+    int objectID;
+};
+```
+
+`modelID` and `objectID` identify which rendered instance this body controls. When physics updates the position, it automatically calls `objectTransform` to move the rendered object.
+
+## Adding dynamic bodies
+
+Call `addDynamicBody` after creating your objects with `addObject`:
+
+```cpp
+// Create rendered objects first
+int o1 = addObject(0, glm::vec3{5.77f, 0.0f, 0.0f}, glm::vec3{1.0f,1.0f,1.0f}, 0);
+int o2 = addObject(0, glm::vec3{-2.89f, 5.0f, 0.0f}, glm::vec3{1.0f,1.0f,1.0f}, 0);
+int o3 = addObject(0, glm::vec3{-2.89f, -5.0f, 0.0f}, glm::vec3{1.0f,1.0f,1.0f}, 0);
+
+uploadInstanceData();
+
+// Attach physics bodies
+size_t phy1 = addDynamicBody(0, o1, 1.0f, getData(0, o1).position);
+size_t phy2 = addDynamicBody(0, o2, 1.0f, getData(0, o2).position);
+size_t phy3 = addDynamicBody(0, o3, 1.0f, getData(0, o3).position);
+```
+
+## Setting initial velocities
+
+Use `getphydata` to get a mutable reference and set the initial velocity:
+
+```cpp
+float v = sqrt(1.0f / a); // orbital speed for equilateral triangle
+
+getphydata(phy1).velocity = glm::vec3({0, v, 0});
+getphydata(phy2).velocity = glm::vec3({-v * sqrt(3.0f)/2.0f, -v * 0.5f, 0.0f});
+getphydata(phy3).velocity = glm::vec3({ v * sqrt(3.0f)/2.0f, -v * 0.5f, 0.0f});
+```
+
+These initial conditions produce a stable three-body figure-8 orbit in dimensionless units.
+
+## Integration scheme
+
+fast_opengl uses the **Leapfrog (Störmer-Verlet)** integrator, a symplectic second-order method that conserves energy far better than Euler integration over long simulations.
+
+The update order is:
+
+```
+updateVelocityfirst(dt)  →  half kick + full drift
+updateGravity()          →  compute accelerations
+updateVelocitysecond(dt) →  second half kick
+```
+
+This must be called **inside a fixed-timestep accumulator loop**:
+
+```cpp main.cpp
+const double dt = 0.01;
+Uint64 NOW = SDL_GetPerformanceCounter();
+Uint64 LAST = 0;
+double accumulator = 0.0;
+
+while (1) {
+    NOW = SDL_GetPerformanceCounter();
+    double deltatime = (double)((NOW - LAST)) / (double)SDL_GetPerformanceFrequency();
+    if (deltatime > 0.25) deltatime = 0.25;
+    LAST = NOW;
+    accumulator += deltatime;
+
+    while (accumulator >= dt) {
+        updateVelocityfirst(dt);
+        updateGravity();
+        updateVelocitysecond(dt);
+        accumulator -= dt;
+    }
+
+    // Render
+    updateInstanceMatrices();
+    uploadInstanceData();
+    drawScene(view, projection);
+    SDL_GL_SwapWindow(window);
+}
+```
+
+<Warning>
+Do not skip the fixed-timestep accumulator. Running physics at variable frame rate produces inaccurate and non-reproducible simulations.
+</Warning>
+
+## Gravity computation
+
+`updateGravity` computes all pairwise gravitational forces in O(n²):
+
+```cpp phy1.cpp
+void updateGravity() {
+    const double G = 1.0;
+    const double softening = 0.01;
+
+    for (auto& b : bodylist) b.acceleration = glm::vec3{0.0, 0.0, 0.0};
+
+    size_t count = bodylist.size();
+    for (size_t i = 0; i < count; i++) {
+        for (size_t j = i+1; j < count; j++) {
+            glm::vec3 diff = bodylist[j].pos - bodylist[i].pos;
+            double distsq = glm::dot(diff, diff) + softening;
+            double invDistCube = 1.0 / (distsq * sqrt(distsq));
+
+            glm::vec3 force = diff * glm::vec3(G * invDistCube);
+            bodylist[i].acceleration += force * bodylist[j].mass;
+            bodylist[j].acceleration -= force * bodylist[i].mass;
+        }
+    }
+}
+```
+
+- **G = 1.0** — dimensionless units; scale your masses and distances accordingly
+- **softening = 0.01** — prevents singularity when two bodies are very close
+- The loop uses Newton's third law (action-reaction) to halve the number of force evaluations
+
+<Info>
+For large numbers of bodies (thousands+), the O(n²) algorithm becomes the performance bottleneck. Consider a Barnes-Hut tree or GPU-based approach for large-scale simulations.
+</Info>
+
+## Complete three-body example
+
+This is the full setup from `src/main.cpp` — a stable equilateral triangle orbit:
+
+```cpp main.cpp
+initSystem({"assets/check.obj"}, {"assets/map/nightearth.png"});
+
+const float a = 10.0f;
+float R = a / sqrt(3.0f);
+int o1 = addObject(0, glm::vec3{R, 0, 0}, glm::vec3{1.01f,1.0f,1.0f}, 0);
+int o2 = addObject(0, glm::vec3{-R/2.0f, a/2.0f, 0}, glm::vec3{1.01f,1.0f,1.0f}, 0);
+int o3 = addObject(0, glm::vec3{-R/2.0f, -a/2.0f, 0}, glm::vec3{1.01f,1.0f,1.0f}, 0);
+
+float v = sqrt(1.0f / a);
+uploadInstanceData();
+
+size_t phy1 = addDynamicBody(0, o1, 1.0f, getData(0,o1).position);
+size_t phy2 = addDynamicBody(0, o2, 1.0f, getData(0,o2).position);
+size_t phy3 = addDynamicBody(0, o3, 1.0f, getData(0,o3).position);
+
+getphydata(phy1).velocity = glm::vec3({0, v, 0});
+getphydata(phy2).velocity = glm::vec3({-v * sqrt(3.0f)/2.0f, -v * 0.5f, 0.0f});
+getphydata(phy3).velocity = glm::vec3({ v * sqrt(3.0f)/2.0f, -v * 0.5f, 0.0f});
+```

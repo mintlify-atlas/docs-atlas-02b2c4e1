@@ -1,0 +1,41 @@
+---
+title: readFile
+description: Read a GLSL shader source file from disk
+---
+
+```cpp
+#include <glslread.h>
+```
+
+## `readFile`
+
+```cpp
+std::string readFile(const std::string& path);
+```
+
+Reads the full contents of a file from disk and returns them as a `std::string`. Used internally by `initShader()` and the cube/sphere shader compilation functions to load GLSL source before passing it to the OpenGL driver.
+
+<ParamField path="path" type="const std::string&" required>
+  File path relative to the process working directory.
+</ParamField>
+
+**Returns** — the complete file contents as a `std::string`.
+
+<Tip>
+  Run the binary from the project root so that shader paths like `shaders/obj_vertex.glsl` resolve correctly. If you launch the executable from a different directory, relative paths will resolve against that directory instead.
+</Tip>
+
+### Example
+
+```cpp
+std::string src  = readFile("shaders/obj_vertex.glsl");
+const char* csrc = src.c_str();
+
+GLuint shader = glCreateShader(GL_VERTEX_SHADER);
+glShaderSource(shader, 1, &csrc, nullptr);
+glCompileShader(shader);
+```
+
+<Note>
+  Paths are relative to the process working directory — wherever you run the binary from, not the source file location.
+</Note>

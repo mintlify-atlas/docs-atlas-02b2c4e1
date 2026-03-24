@@ -1,0 +1,132 @@
+---
+title: OBJ models
+description: Load .obj files and place multiple instances with per-instance position, rotation, and scale
+---
+
+The OBJ rendering system loads any `.obj` file via [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) and renders multiple instances using GPU instancing. Each instance has its own transform (position, rotation, scale) and texture index.
+
+## System initialization
+
+Call `initSystem` once before the render loop, passing lists of `.obj` files and texture images.
+
+```cpp
+initSystem(
+    {"assets/check.obj"},                  // OBJ models — modelID 0, 1, 2...
+    {"assets/map/nightearth.png"}           // Textures — texID 0, 1, 2...
+);
+```
+
+`initSystem` performs three steps internally:
+1. Compiles and links `shaders/obj_vertex.glsl` + `shaders/obj_fragment.glsl`
+2. Loads each `.obj` file and uploads geometry to the GPU
+3. Loads all textures into a `GL_TEXTURE_2D_ARRAY`
+
+## Adding instances
+
+After `initSystem`, add object instances with `addObject`. The returned integer is the object ID used for transforms and physics.
+
+```cpp
+// addObject(modelID, position, scale, textureID)
+int o1 = addObject(0, glm::vec3{5.77f, 0.0f, 0.0f}, glm::vec3{1.01f, 1.0f, 1.0f}, 0);
+int o2 = addObject(0, glm::vec3{-2.89f, 5.0f, 0.0f}, glm::vec3{1.01f, 1.0f, 1.0f}, 0);
+int o3 = addObject(0, glm::vec3{-2.89f, -5.0f, 0.0f}, glm::vec3{1.01f, 1.0f, 1.0f}, 0);
+```
+
+<Info>
+`modelID` is the index into the `objPaths` vector passed to `initSystem`. If you loaded two models, use `0` for the first and `1` for the second.
+</Info>
+
+## Per-frame update sequence
+
+Every frame, call these three functions in order:
+
+```cpp
+updateInstanceMatrices(); // Recompute matrices for dirty instances
+uploadInstanceData();     // Upload updated matrices to the GPU
+drawScene(view, proj);   // Issue draw calls
+```
+
+### Why the dirty flag matters
+
+Each instance has a `dirty` flag. `updateInstanceMatrices` only recomputes the matrix for instances where `dirty == true`, skipping unchanged ones. This avoids unnecessary matrix multiplications each frame.
+
+The `dirty` flag is set to `true` automatically when you call `translateObject`, `setObjectRotation`, `scaleObject`, or `objectTransform`. You never set it manually.
+
+## Querying instance data
+
+Use `getData` to get a reference to an instance's current state:
+
+```cpp
+instance& inst = getData(0, o1);
+float x = inst.position.x;
+float y = inst.position.y;
+```
+
+The `instance` struct has:
+
+| Field | Type | Description |
+|---|---|---|
+| `position` | `glm::vec3` | World position |
+| `scale` | `glm::vec3` | Per-axis scale |
+| `rotation` | `glm::vec3` | Euler rotation in radians |
+| `dirty` | `bool` | True when matrix needs recomputing |
+
+## Transforms
+
+Three functions modify instances incrementally (they add to the current value):
+
+```cpp
+// Add to position
+translateObject(0, o1, glm::vec3{0.1f, 0.0f, 0.0f});
+
+// Add to rotation (radians)
+setObjectRotation(0, o1, glm::vec3{0.0f, glm::radians(1.0f), 0.0f});
+
+// Add to scale
+scaleObject(0, o1, glm::vec3{0.01f, 0.0f, 0.0f});
+```
+
+To set absolute values, use `objectTransform` with `TransformParams`:
+
+```cpp
+objectTransform(0, o1, TransformParams{
+    .position = glm::vec3{1.0f, 0.0f, 0.0f},
+    .scale    = glm::vec3{2.0f, 2.0f, 2.0f},
+    .rotation = glm::vec3{0.0f, 0.0f, 0.0f}
+});
+```
+
+Fields in `TransformParams` are `std::optional` — omit any field to leave it unchanged.
+
+## Complete example
+
+The following replicates the three-body gravitational simulation from `src/main.cpp`:
+
+```cpp main.cpp
+// Initialize
+initSystem({"assets/check.obj"}, {"assets/map/nightearth.png"});
+
+// Place three objects at equilateral triangle vertices
+const float a = 10.0f;
+float R = a / sqrt(3.0f);
+int o1 = addObject(0, glm::vec3{R, 0, 0}, glm::vec3{1.01f,1.0f,1.0f}, 0);
+int o2 = addObject(0, glm::vec3{-R/2.0f, a/2.0f, 0}, glm::vec3{1.01f,1.0f,1.0f}, 0);
+int o3 = addObject(0, glm::vec3{-R/2.0f, -a/2.0f, 0}, glm::vec3{1.01f,1.0f,1.0f}, 0);
+
+uploadInstanceData();
+
+// Render loop
+while (1) {
+    // ... event handling, delta time ...
+
+    updateInstanceMatrices();
+    uploadInstanceData();
+    drawScene(view, projection);
+
+    SDL_GL_SwapWindow(window);
+}
+```
+
+<Tip>
+See the [physics guide](/guides/physics) to add gravitational simulation to your objects.
+</Tip>

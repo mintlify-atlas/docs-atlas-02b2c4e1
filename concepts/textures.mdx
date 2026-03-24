@@ -1,0 +1,128 @@
+---
+title: Textures
+description: Loading PNG textures into a GL_TEXTURE_2D_ARRAY for instanced rendering
+---
+
+## Texture array approach
+
+All object textures are packed into a single `GL_TEXTURE_2D_ARRAY`. Every layer of the array is one texture, and every instance references a layer by its integer index. Because `glTexImage3D` allocates storage for all layers at once, **every texture passed to `initSystem` must be the same pixel dimensions**.
+
+## `createTextureArray`
+
+```cpp
+void createTextureArray(const std::vector<std::string>& paths) {
+    glGenTextures(1, &textureArrayID);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArrayID);
+
+    if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
+        std::cout << "SDL_image failed: " << IMG_GetError() << std::endl;
+    }
+
+    int layers = paths.size();
+
+    // Read dimensions from the first image
+    SDL_Surface* first = IMG_Load(paths[0].c_str());
+    if (!first) {
+        std::cout << "Failed to load texture: " << paths[0] << std::endl;
+        std::cout << "SDL_image error: "         << IMG_GetError() << std::endl;
+        return;
+    }
+    int w = first->w;
+    int h = first->h;
+    SDL_FreeSurface(first);
+
+    // Allocate storage for all layers up front
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8,
+                 w, h, layers, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    // Upload each texture into its layer
+    for (int i = 0; i < layers; i++) {
+        SDL_Surface* s = IMG_Load(paths[i].c_str());
+        SDL_Surface* f = SDL_ConvertSurfaceFormat(s, SDL_PIXELFORMAT_RGBA32, 0);
+
+        glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
+                        0, 0, i,        // x, y, layer offset
+                        w, h, 1,        // width, height, depth
+                        GL_RGBA, GL_UNSIGNED_BYTE, f->pixels);
+
+        SDL_FreeSurface(s);
+        SDL_FreeSurface(f);
+    }
+
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER,
+                    GL_NEAREST_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+}
+```
+
+### SDL_PIXELFORMAT_RGBA32 conversion
+
+Before uploading to the GPU each surface is converted to `SDL_PIXELFORMAT_RGBA32`. SDL2 loaded images may arrive in a variety of internal pixel formats (BGR, indexed colour, etc.). The conversion guarantees that `f->pixels` always contains tightly-packed RGBA bytes that match the `GL_RGBA` / `GL_UNSIGNED_BYTE` format passed to `glTexSubImage3D`.
+
+### Texture filtering
+
+| Parameter | Value | Effect |
+|---|---|---|
+| `GL_TEXTURE_MIN_FILTER` | `GL_NEAREST_MIPMAP_LINEAR` | Nearest texel within a mip level, linear blend between adjacent mip levels |
+| `GL_TEXTURE_MAG_FILTER` | `GL_LINEAR` | Bilinear filtering when the texture is magnified |
+
+Mipmaps are generated automatically by `glGenerateMipmap(GL_TEXTURE_2D_ARRAY)` after all layers are uploaded.
+
+## Per-instance texture index
+
+Each instance stores a `float` texture layer index that is uploaded as a per-instance vertex attribute (location 7). The index is set when the object is added:
+
+```cpp
+int addObject(int modelID, glm::vec3 pos, glm::vec3 scale, float texID) {
+    ObjModel& m = models[modelID];
+    // ...
+    m.texIndices.push_back(texID);
+    // ...
+    return m.instances.size() - 1;
+}
+```
+
+In the vertex shader `texIndex` is cast to an integer and passed as a `flat int` to the fragment shader, which uses it as the third component of the `sampler2DArray` lookup:
+
+```glsl
+FragColor = texture(textureArray, vec3(TexCoord, TexIndex));
+```
+
+## Passing textures to `initSystem`
+
+`initSystem` accepts a vector of OBJ paths and a vector of texture paths. Both are processed in order:
+
+```cpp
+void initSystem(
+    const std::vector<std::string>& objPaths,
+    const std::vector<std::string>& texPaths
+);
+```
+
+Example from `main.cpp`:
+
+```cpp
+initSystem({"assets/check.obj"}, {"assets/map/nightearth.png"});
+```
+
+To add more textures, extend the texture vector. Each additional entry occupies the next layer index:
+
+```cpp
+initSystem(
+    {"assets/check.obj"},
+    {
+        "assets/map/nightearth.png",  // index 0
+        "assets/map/stone.png",       // index 1
+        "assets/map/grass.png"        // index 2
+    }
+);
+```
+
+Then pass the matching index as the `texID` argument to `addObject`:
+
+```cpp
+int o = addObject(0, glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{1.0f, 1.0f, 1.0f}, 1);
+// uses stone.png (index 1)
+```

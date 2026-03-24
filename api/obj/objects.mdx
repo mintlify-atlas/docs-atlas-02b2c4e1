@@ -1,0 +1,155 @@
+---
+title: Objects
+description: Add and query object instances in the scene
+---
+
+```cpp
+#include <obj.h>
+```
+
+Once the system is initialised with `initSystem`, use these functions to add instances of loaded models to the scene and to render them each frame.
+
+## The `instance` struct
+
+Every object in the scene is backed by an `instance`:
+
+```cpp
+struct instance {
+  glm::vec3 position;
+  glm::vec3 scale;
+  glm::vec3 rotation;
+  bool dirty = true;
+};
+```
+
+| Field | Description |
+|---|---|
+| `position` | World-space position. |
+| `scale` | Scale along each axis. |
+| `rotation` | Rotation in radians around X, Y, and Z. |
+| `dirty` | Set to `true` when the transform has changed. `updateInstanceMatrices` only recomputes matrices for dirty instances. |
+
+---
+
+## Example
+
+```cpp
+// Place three objects at the vertices of an equilateral triangle
+const float a = 10.0f;
+float R = a / sqrt(3.0f);
+
+int o1 = addObject(0, glm::vec3{R, 0, 0},             glm::vec3{1.01f, 1.0f, 1.0f}, 0);
+int o2 = addObject(0, glm::vec3{-R/2.0f, a/2.0f, 0},  glm::vec3{1.01f, 1.0f, 1.0f}, 0);
+int o3 = addObject(0, glm::vec3{-R/2.0f, -a/2.0f, 0}, glm::vec3{1.01f, 1.0f, 1.0f}, 0);
+
+uploadInstanceData();
+
+// in render loop:
+updateInstanceMatrices();
+uploadInstanceData();
+drawScene(view, projection);
+```
+
+---
+
+## Functions
+
+### `addObject`
+
+```cpp
+int addObject(int modelID, glm::vec3 pos, glm::vec3 scale, float texID);
+```
+
+Adds a new instance of the specified model to the scene. The instance starts with zero rotation and `dirty = true`.
+
+<ParamField path="modelID" type="int" required>
+  Zero-based index of the model to instantiate, as determined by its position in the `objPaths` list passed to `initSystem`.
+</ParamField>
+
+<ParamField path="pos" type="glm::vec3" required>
+  Initial world-space position.
+</ParamField>
+
+<ParamField path="scale" type="glm::vec3" required>
+  Initial scale along each axis.
+</ParamField>
+
+<ParamField path="texID" type="float" required>
+  Zero-based index into the texture array for this instance.
+</ParamField>
+
+<ResponseField name="objectID" type="int">
+  Zero-based index of the new instance within the model's instance list. Pass this to transform, query, and physics functions.
+</ResponseField>
+
+### `getData`
+
+```cpp
+instance& getData(int modelID, int objectID);
+```
+
+Returns a mutable reference to the `instance` struct for the specified object. Use this to read current transform state or to modify fields directly.
+
+<ParamField path="modelID" type="int" required>
+  Model index.
+</ParamField>
+
+<ParamField path="objectID" type="int" required>
+  Instance index returned by `addObject`.
+</ParamField>
+
+<ResponseField name="instance" type="instance&">
+  Mutable reference to the instance data.
+</ResponseField>
+
+### `objectCount`
+
+```cpp
+int objectCount(int modelID);
+```
+
+Returns the number of instances currently registered for a model.
+
+<ParamField path="modelID" type="int" required>
+  Model index.
+</ParamField>
+
+<ResponseField name="count" type="int">
+  Number of instances for the given model.
+</ResponseField>
+
+### `updateInstanceMatrices`
+
+```cpp
+void updateInstanceMatrices();
+```
+
+Iterates over all instances across all models. For each instance with `dirty == true`, recomputes its model matrix from the current `position`, `rotation`, and `scale` and clears the `dirty` flag. Call this each frame before `uploadInstanceData`.
+
+### `uploadInstanceData`
+
+```cpp
+void uploadInstanceData();
+```
+
+Streams the updated matrix and texture index buffers to the GPU for all models. Uses `GL_DYNAMIC_DRAW` and doubles buffer capacity when a resize is needed. Call after `updateInstanceMatrices` and before `drawScene`.
+
+### `drawScene`
+
+```cpp
+void drawScene(glm::mat4 view, glm::mat4 proj);
+```
+
+Binds the OBJ shader and texture array, then issues an instanced draw call for each model that has at least one instance.
+
+<ParamField path="view" type="glm::mat4" required>
+  View matrix, typically from `glm::lookAt`.
+</ParamField>
+
+<ParamField path="proj" type="glm::mat4" required>
+  Projection matrix, typically from `glm::perspective`.
+</ParamField>
+
+<Note>
+Call `updateInstanceMatrices()` and `uploadInstanceData()` every frame before `drawScene()`. If you skip these calls the scene will still render, but any transform changes will not be reflected on screen.
+</Note>

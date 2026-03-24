@@ -1,0 +1,160 @@
+---
+title: Grid
+description: Reference grid and simple (non-instanced) shape primitives
+---
+
+```cpp
+#include <shapes.h>
+```
+
+This page covers the reference grid and the simple, non-instanced shape primitives — a single cube, sphere, UV sphere, and icosphere. These are best suited for quick scene orientation and prototyping. For rendering many objects efficiently, use the [instanced cube](/api/shapes/cubes) and [instanced sphere](/api/shapes/spheres) APIs instead.
+
+---
+
+## Grid
+
+The grid draws an infinite-looking reference plane aligned to the XZ axis. It is useful for spatial orientation during development.
+
+### `creategrid`
+
+```cpp
+void creategrid();
+```
+
+Initialises the grid shader and vertex buffers. Call once at startup.
+
+### `griddraw`
+
+```cpp
+void griddraw(glm::mat4 view, glm::mat4 pers);
+```
+
+Renders the reference grid. Call each frame inside your render loop.
+
+<ParamField path="view" type="glm::mat4" required>
+  View matrix, typically from `glm::lookAt`.
+</ParamField>
+
+<ParamField path="pers" type="glm::mat4" required>
+  Projection matrix, typically from `glm::perspective`.
+</ParamField>
+
+**Example:**
+
+```cpp
+creategrid();
+
+// in render loop:
+griddraw(view, projection);
+```
+
+---
+
+## Simple cube
+
+A single cube with a hardcoded checkered texture (`assets/map/texture_check.png`). The cube rotates automatically when a non-zero `time` value is passed.
+
+### `createcube`
+
+```cpp
+void createcube();
+```
+
+Initialises the cube shader, geometry, and texture. Call once at startup.
+
+### `cubedraw`
+
+```cpp
+void cubedraw(glm::mat4 view, glm::mat4 pers, float time);
+```
+
+Renders the cube. When `time > 0.001`, the cube rotates incrementally each frame.
+
+<ParamField path="view" type="glm::mat4" required>
+  View matrix.
+</ParamField>
+
+<ParamField path="pers" type="glm::mat4" required>
+  Projection matrix.
+</ParamField>
+
+<ParamField path="time" type="float" required>
+  Elapsed or delta time in seconds. Pass a positive value to enable rotation.
+</ParamField>
+
+**Example:**
+
+```cpp
+createcube();
+
+// in render loop:
+cubedraw(view, projection, deltaTime);
+```
+
+---
+
+## Simple sphere (UV sphere)
+
+A single UV-parameterised sphere.
+
+### `createsphere`
+
+```cpp
+void createsphere();
+```
+
+Initialises the UV sphere shader and geometry. Call once at startup.
+
+### `spheredraw`
+
+```cpp
+void spheredraw(glm::mat4 view, glm::mat4 pers, float time);
+```
+
+Renders the UV sphere.
+
+<ParamField path="view" type="glm::mat4" required>
+  View matrix.
+</ParamField>
+
+<ParamField path="pers" type="glm::mat4" required>
+  Projection matrix.
+</ParamField>
+
+<ParamField path="time" type="float" required>
+  Elapsed or delta time in seconds.
+</ParamField>
+
+---
+
+## Simple icosphere
+
+A single icosphere built from a subdivided icosahedron.
+
+### `createicosphere`
+
+```cpp
+void createicosphere();
+```
+
+Initialises the icosphere shader and geometry. Call once at startup.
+
+### `icospheredraw`
+
+```cpp
+void icospheredraw(glm::mat4 view, glm::mat4 pers, float time);
+```
+
+Renders the icosphere.
+
+<ParamField path="view" type="glm::mat4" required>
+  View matrix.
+</ParamField>
+
+<ParamField path="pers" type="glm::mat4" required>
+  Projection matrix.
+</ParamField>
+
+<ParamField path="time" type="float" required>
+  Elapsed or delta time in seconds.
+</ParamField>
