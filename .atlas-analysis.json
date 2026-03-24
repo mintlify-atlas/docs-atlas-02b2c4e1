@@ -1,0 +1,107 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "fast_opengl",
+  "projectDescription": "A fast, easy-to-use C++ library providing functional abstractions over OpenGL 3.3+ for rendering shapes, loading OBJ models, managing textures, and simulating basic physics.",
+  "theme": "palm",
+  "primaryColor": "#00A86B",
+  "lightColor": "#00C97F",
+  "darkColor": "#007A4F",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "building"]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/window-setup",
+              "concepts/rendering-pipeline",
+              "concepts/shaders",
+              "concepts/textures"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/rendering-shapes",
+              "guides/obj-models",
+              "guides/instanced-rendering",
+              "guides/physics"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Window",
+            "pages": ["api/create-window"]
+          },
+          {
+            "group": "Shapes",
+            "pages": [
+              "api/shapes/cubes",
+              "api/shapes/spheres",
+              "api/shapes/grid"
+            ]
+          },
+          {
+            "group": "OBJ Rendering",
+            "pages": [
+              "api/obj/system",
+              "api/obj/objects",
+              "api/obj/transforms"
+            ]
+          },
+          {
+            "group": "Physics",
+            "pages": ["api/physics"]
+          },
+          {
+            "group": "Utilities",
+            "pages": ["api/glslread"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Instanced rendering for cubes and spheres with texture array support",
+    "OBJ model loading via tinyobjloader with per-instance transforms",
+    "Built-in basic N-body gravity physics simulation using Leapfrog integration",
+    "SDL2-based window and OpenGL context creation with GLAD loader",
+    "GLSL shader loading from files at runtime",
+    "Procedural icosphere generation with configurable subdivision levels",
+    "Reference grid rendering for scene orientation"
+  ],
+  "publicApiSurface": [
+    "createwindow(title, width, height) -> SDL_Window*",
+    "initSystem(objPaths, texPaths)",
+    "addObject(modelID, pos, scale, texID) -> int",
+    "objectTransform(modelID, objectID, TransformParams)",
+    "translateObject(modelID, objectID, pos) -> glm::vec3",
+    "setObjectRotation(modelID, objectID, rot) -> glm::vec3",
+    "scaleObject(modelID, objectID, scale) -> glm::vec3",
+    "getData(modelID, objectID) -> instance&",
+    "updateInstanceMatrices()",
+    "uploadInstanceData()",
+    "drawScene(view, proj)",
+    "initcubesystem(texturePaths)",
+    "addCube(side, position, color/textureIndex) -> int",
+    "drawInstancedCubes(view, pers)",
+    "initspheresystem(texturePaths, divisions)",
+    "addSphere(radius, position, color/textureIndex) -> int",
+    "drawInstancedSpheres(view, pers)",
+    "creategrid() / griddraw(view, pers)",
+    "addDynamicBody(modelID, objectID, mass, pos) -> size_t",
+    "updateGravity()",
+    "updateVelocityfirst(dt) / updateVelocitysecond(dt)",
+    "getphydata(id) -> body&",
+    "readFile(path) -> std::string"
+  ]
+}
